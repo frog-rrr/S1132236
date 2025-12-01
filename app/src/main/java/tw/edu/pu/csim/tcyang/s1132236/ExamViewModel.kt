@@ -12,57 +12,68 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.random.Random
+import android.graphics.RectF
+import android.util.Log
 
-// ExamViewModel.kt
+// 角色圖示資訊
+data class Character(
+    val id: Int,
+    val name: String,
+    var collisionRectPx: RectF = RectF()
+)
 
 // 服務圖示的狀態資料類
 data class ServiceIconState(
-    // 圖示 ID 現在會是 service1, service2, 或 service3
     val iconResourceId: Int,
-    var xOffsetDp: Dp = 0.dp, // 水平位置 (Dp)
-    var yOffsetDp: Dp = 0.dp  // 垂直位置 (Dp)
+    var xOffsetDp: Dp = 0.dp,
+    var yOffsetDp: Dp = 0.dp
 )
 
 class ExamViewModel(application: Application) : AndroidViewModel(application) {
 
-    // --- 靜態資訊 ---
+    // --- 靜態/尺寸資訊 ---
     var screenWidthPx by mutableStateOf(0)
         private set
     var screenHeightPx by mutableStateOf(0)
         private set
     var density by mutableStateOf(1f)
         private set
-    // ... (其他作者、分數、iconSizePx 資訊保持不變) ...
+
     var authorInfo by mutableStateOf("作者 : 資訊工程系 S1132236 楊子青")
     var score by mutableStateOf(0)
-    val iconSizePx: Int = 300 // 角色圖示尺寸
+    var collisionMessage by mutableStateOf("")
+        private set
 
-    // 服務圖示資源列表 (現在有三個 ID，將從中隨機選擇)
-    // ⚠️ 請確認您的 drawable 資料夾中有 service1.png, service2.png, service3.png
+    val iconSizePx: Int = 300 // 角色圖示尺寸
+    val serviceIconSizePx: Int = 300 // 服務圖示尺寸
+
     val serviceIconResources = listOf(
         R.drawable.service1,
         R.drawable.service2,
         R.drawable.service3
     )
 
-    // 服務圖示的固定尺寸 (用於碰撞計算，這裡假設為 100px 寬高)
-    val serviceIconSizePx: Int = 300
+    // --- 角色碰撞區域 ---
+    val characters: List<Character> = listOf(
+        Character(id = R.drawable.role0, name = "嬰幼兒"), // 左中
+        Character(id = R.drawable.role1, name = "兒童"),    // 右中
+        Character(id = R.drawable.role2, name = "成人"),    // 左下
+        Character(id = R.drawable.role3, name = "一般民眾") // 右下
+    )
+
 
     // --- 動態狀態 ---
-    // 初始化時，隨機選一個圖示
     var currentServiceIcon by mutableStateOf(ServiceIconState(iconResourceId = serviceIconResources.random()))
         private set
 
     private var gameJob: Job? = null
-
-    // 每 0.1 秒移動的像素值 (20px)
     private val dropAmountPx: Int = 20
 
+    private var isGameInitialized = false
+    private var isResetting = false // 新增旗標，防止在 delay 期間重複觸發碰撞
 
     init {
         getScreenDimensions()
-        startGameLoop()
     }
 
     private fun getScreenDimensions() {
@@ -70,27 +81,80 @@ class ExamViewModel(application: Application) : AndroidViewModel(application) {
         screenWidthPx = displayMetrics.widthPixels
         screenHeightPx = displayMetrics.heightPixels
         density = displayMetrics.density
+
+        if (screenHeightPx > 0 && !isGameInitialized) {
+            calculateCharacterPositions()
+            startGameLoop()
+            isGameInitialized = true
+            Log.d("GameDebug", "遊戲已啟動，螢幕高: $screenHeightPx")
+        }
     }
 
-    // 將像素值轉換為 Dp (用於 Compose 佈局)
     private fun pxToDp(px: Int): Dp {
-        // 確保 density 在初始化前不會是 0
         return (px / if (density == 0f) 1f else density).dp
     }
 
-    // 隨機產生一個新的圖示，回到螢幕上方中心
-    private fun resetServiceIcon() {
-        // X 軸定位: 螢幕寬度 / 2 - 圖示寬度 / 2
-        val initialX = pxToDp(screenWidthPx / 2 - serviceIconSizePx / 2)
+    private fun calculateCharacterPositions() {
+        if (screenHeightPx == 0) return
 
-        currentServiceIcon = ServiceIconState(
-            iconResourceId = serviceIconResources.random(), // *** 隨機選擇圖示 ***
-            xOffsetDp = initialX,
-            yOffsetDp = 0.dp // 螢幕最上方
+        val halfScreenHeight = screenHeightPx / 2
+
+        characters[0].collisionRectPx.set(
+            0f, (halfScreenHeight - iconSizePx).toFloat(), iconSizePx.toFloat(), halfScreenHeight.toFloat()
+        )
+        characters[1].collisionRectPx.set(
+            (screenWidthPx - iconSizePx).toFloat(), (halfScreenHeight - iconSizePx).toFloat(), screenWidthPx.toFloat(), halfScreenHeight.toFloat()
+        )
+        characters[2].collisionRectPx.set(
+            0f, (screenHeightPx - iconSizePx).toFloat(), iconSizePx.toFloat(), screenHeightPx.toFloat()
+        )
+        characters[3].collisionRectPx.set(
+            (screenWidthPx - iconSizePx).toFloat(), (screenHeightPx - iconSizePx).toFloat(), screenWidthPx.toFloat(), screenHeightPx.toFloat()
         )
     }
 
-    // 遊戲主循環：處理圖示的自動下落
+
+    private fun resetServiceIcon() {
+        isResetting = false // 重置完成後，允許再次碰撞
+        val initialX = pxToDp(screenWidthPx / 2 - serviceIconSizePx / 2)
+
+        currentServiceIcon = ServiceIconState(
+            iconResourceId = serviceIconResources.random(),
+            xOffsetDp = initialX,
+            yOffsetDp = 0.dp
+        )
+        collisionMessage = ""
+    }
+
+    private fun handleCollision(characterName: String) {
+        if (isResetting) return // 如果正在重置，忽略新的碰撞
+        isResetting = true
+
+        Log.d("GameDebug", "碰撞成功: $characterName")
+        score += 10
+        collisionMessage = "(碰撞${characterName}圖示)"
+
+        // ** 延遲 1 秒後才重置圖示和訊息 **
+        viewModelScope.launch {
+            delay(1000)
+            resetServiceIcon()
+        }
+    }
+
+    private fun handleMiss() {
+        if (isResetting) return // 如果正在重置，忽略新的掉落
+        isResetting = true
+
+        Log.d("GameDebug", "掉落底部")
+        collisionMessage = "(掉到最下方)"
+
+        // ** 延遲 1 秒後才重置圖示和訊息 **
+        viewModelScope.launch {
+            delay(1000)
+            resetServiceIcon()
+        }
+    }
+
     private fun startGameLoop() {
         resetServiceIcon()
 
@@ -98,37 +162,58 @@ class ExamViewModel(application: Application) : AndroidViewModel(application) {
         gameJob = viewModelScope.launch {
             val dropAmountDp = pxToDp(dropAmountPx)
 
-            // 計算圖示底部觸發重置的 Y 座標
-            val screenBottomDp = pxToDp(screenHeightPx)
-            val iconBottomLineY = screenBottomDp - pxToDp(serviceIconSizePx)
+            val screenBottomYPx = screenHeightPx - serviceIconSizePx
 
             while (true) {
-                delay(100) // 每 0.1 秒執行一次
+                delay(100)
 
-                // 檢查是否碰撞底部
-                val newY = currentServiceIcon.yOffsetDp + dropAmountDp
+                // 只有在非重置狀態下才執行下落和碰撞檢測
+                if (!isResetting) {
+                    val newYDp = currentServiceIcon.yOffsetDp + dropAmountDp
+                    val newYPx = (newYDp.value * density).toInt()
+                    val currentX = (currentServiceIcon.xOffsetDp.value * density).toInt()
 
-                // 碰撞檢測：如果圖示的頂部 Y 座標超過了圖示底線 Y 座標，則重置
-                if (newY >= iconBottomLineY) {
-                    // 碰撞螢幕下方，重置圖示
-                    resetServiceIcon()
-                } else {
-                    // 繼續下落
-                    currentServiceIcon = currentServiceIcon.copy(
-                        yOffsetDp = newY
+                    // 1. 檢查是否碰撞角色
+                    val serviceRect = RectF(
+                        currentX.toFloat(),
+                        newYPx.toFloat(),
+                        (currentX + serviceIconSizePx).toFloat(),
+                        (newYPx + serviceIconSizePx).toFloat()
                     )
+
+                    var collidedCharacter: Character? = null
+                    for (character in characters) {
+                        if (RectF.intersects(serviceRect, character.collisionRectPx)) {
+                            collidedCharacter = character
+                            break
+                        }
+                    }
+
+                    if (collidedCharacter != null) {
+                        handleCollision(collidedCharacter.name)
+                    }
+                    // 2. 檢查是否碰撞下方邊界
+                    else if (newYPx >= screenBottomYPx) {
+                        handleMiss()
+                    }
+                    // 3. 繼續下落
+                    else {
+                        currentServiceIcon = currentServiceIcon.copy(
+                            yOffsetDp = newYDp
+                        )
+                    }
                 }
             }
         }
     }
 
-    // 處理水平拖曳，更新 X 軸位置
     fun updateXOffset(dragAmount: Dp) {
+        if (isResetting) return // 重置期間不能移動
+
         val newX = currentServiceIcon.xOffsetDp + dragAmount
         val screenWidthDp = pxToDp(screenWidthPx)
         val iconWidthDp = pxToDp(serviceIconSizePx)
 
-        // 限制 X 軸位置在螢幕範圍內
         val minX = 0.dp
         val maxX = screenWidthDp - iconWidthDp
 

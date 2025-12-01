@@ -31,7 +31,6 @@ class MainActivity : ComponentActivity() {
 
 /**
  * 隱藏狀態列 (Status Bar) 及導覽列 (Navigation Bar)，實現沉浸式全螢幕模式。
- * 兼容 API 30 (Android 11) 以上和以下版本。
  */
 @Composable
 fun HideSystemBars(window: Window) {
@@ -60,11 +59,7 @@ fun HideSystemBars(window: Window) {
     }
 }
 
-// 注意：Greeting 和 GreetingPreview 函式現在不再被 MainActivity 直接使用，
-// 但為了保持檔案完整性，您可以選擇保留它們或將其移除。
-// 如果您將它們移除，MainActivity.kt 將會更簡潔。
-
-// 預覽 Composable 函式 (您可以為 ExamScreen 創建一個新的預覽)
+// 預覽 Composable 函式
 @Preview(showBackground = true)
 @Composable
 fun ExamScreenPreview() {
