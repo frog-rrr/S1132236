@@ -19,12 +19,15 @@ import android.util.Log
 data class Character(
     val id: Int,
     val name: String,
+    val correctServiceId: Int,          // 正確對應的服務圖示 ID
+    val correctServiceName: String,     // 正確對應的服務名稱
     var collisionRectPx: RectF = RectF()
 )
 
 // 服務圖示的狀態資料類
 data class ServiceIconState(
     val iconResourceId: Int,
+    val serviceName: String,            // 當前服務的名稱
     var xOffsetDp: Dp = 0.dp,
     var yOffsetDp: Dp = 0.dp
 )
@@ -41,36 +44,54 @@ class ExamViewModel(application: Application) : AndroidViewModel(application) {
 
     var authorInfo by mutableStateOf("作者 : 資訊工程系 S1132236 楊子青")
     var score by mutableStateOf(0)
+
+    // ** UI 狀態：用於觸發 Toast 顯示 **
+    var toastMessage by mutableStateOf<String?>(null)
+        private set
+
+    // collisionMessage 已不再用於顯示，但保留
     var collisionMessage by mutableStateOf("")
         private set
 
     val iconSizePx: Int = 300 // 角色圖示尺寸
     val serviceIconSizePx: Int = 300 // 服務圖示尺寸
 
-    val serviceIconResources = listOf(
-        R.drawable.service1,
-        R.drawable.service2,
-        R.drawable.service3
+    // ** 服務資源列表，包含資源 ID 和名稱 **
+    // 假設您的資源 ID 依序為 R.drawable.service0, R.drawable.service1, ...
+    val serviceIconDetails = listOf(
+        Pair(R.drawable.service0, "極早期療育"), // service0
+        Pair(R.drawable.service1, "離島服務"),    // service1
+        Pair(R.drawable.service2, "極重多障"),    // service2
+        Pair(R.drawable.service3, "輔具服務")     // service3
     )
 
-    // --- 角色碰撞區域 ---
+    // --- 角色碰撞區域：修正對應關係 ---
     val characters: List<Character> = listOf(
-        Character(id = R.drawable.role0, name = "嬰幼兒"), // 左中
-        Character(id = R.drawable.role1, name = "兒童"),    // 右中
-        Character(id = R.drawable.role2, name = "成人"),    // 左下
-        Character(id = R.drawable.role3, name = "一般民眾") // 右下
+        // role0 (嬰幼兒) -> service0 (極早期療育)
+        Character(id = R.drawable.role0, name = "嬰幼兒", correctServiceId = R.drawable.service0, correctServiceName = "極早期療育"),
+        // role1 (兒童) -> service1 (離島服務)
+        Character(id = R.drawable.role1, name = "兒童", correctServiceId = R.drawable.service1, correctServiceName = "離島服務"),
+        // role2 (成人) -> service2 (極重多障)
+        Character(id = R.drawable.role2, name = "成人", correctServiceId = R.drawable.service2, correctServiceName = "極重多障"),
+        // role3 (一般民眾) -> service3 (輔具服務)
+        Character(id = R.drawable.role3, name = "一般民眾", correctServiceId = R.drawable.service3, correctServiceName = "輔具服務")
     )
 
 
     // --- 動態狀態 ---
-    var currentServiceIcon by mutableStateOf(ServiceIconState(iconResourceId = serviceIconResources.random()))
+    var currentServiceIcon by mutableStateOf(
+        ServiceIconState(
+            iconResourceId = serviceIconDetails.random().first,
+            serviceName = serviceIconDetails.random().second
+        )
+    )
         private set
 
     private var gameJob: Job? = null
     private val dropAmountPx: Int = 20
 
     private var isGameInitialized = false
-    private var isResetting = false // 新增旗標，防止在 delay 期間重複觸發碰撞
+    private var isResetting = false // 暫停遊戲下落的旗標
 
     init {
         getScreenDimensions()
@@ -113,44 +134,76 @@ class ExamViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    // 輔助函式：根據服務 ID 取得正確對應的角色名稱
+    private fun getCorrectRoleName(serviceId: Int): String {
+        return characters.find { it.correctServiceId == serviceId }?.name ?: "未知角色"
+    }
+
 
     private fun resetServiceIcon() {
-        isResetting = false // 重置完成後，允許再次碰撞
+        isResetting = false // 重置完成後，允許再次下落
         val initialX = pxToDp(screenWidthPx / 2 - serviceIconSizePx / 2)
 
+        val randomService = serviceIconDetails.random()
+
         currentServiceIcon = ServiceIconState(
-            iconResourceId = serviceIconResources.random(),
+            iconResourceId = randomService.first,
+            serviceName = randomService.second,
             xOffsetDp = initialX,
             yOffsetDp = 0.dp
         )
         collisionMessage = ""
+        toastMessage = null // 清空 Toast 狀態
     }
 
-    private fun handleCollision(characterName: String) {
-        if (isResetting) return // 如果正在重置，忽略新的碰撞
+    private fun handleCollision(collidedCharacter: Character) {
+        if (isResetting) return
         isResetting = true
 
-        Log.d("GameDebug", "碰撞成功: $characterName")
-        score += 10
-        collisionMessage = "(碰撞${characterName}圖示)"
+        val currentServiceId = currentServiceIcon.iconResourceId
+        val currentServiceName = currentServiceIcon.serviceName
 
-        // ** 延遲 1 秒後才重置圖示和訊息 **
+        val isCorrect = currentServiceId == collidedCharacter.correctServiceId
+
+        // 1. 執行分數判斷
+        if (isCorrect) {
+            score += 1
+            Log.d("GameDebug", "碰撞結果: 正確，分數 +1")
+        } else {
+            score -= 1
+            Log.d("GameDebug", "碰撞結果: 錯誤，分數 -1")
+        }
+
+        // 2. 準備 Toast 訊息 (無論對錯，都顯示正確的對應關係)
+        val correctRoleName = getCorrectRoleName(currentServiceId)
+        val resultText = "${currentServiceName}，屬於 ${correctRoleName} 方面的服務"
+
+        toastMessage = resultText
+
+        // ** 暫停 3 秒，然後重置遊戲 (下一題) **
         viewModelScope.launch {
-            delay(1000)
+            delay(3000)
             resetServiceIcon()
         }
     }
 
     private fun handleMiss() {
-        if (isResetting) return // 如果正在重置，忽略新的掉落
+        if (isResetting) return
         isResetting = true
 
-        Log.d("GameDebug", "掉落底部")
-        collisionMessage = "(掉到最下方)"
+        val currentServiceId = currentServiceIcon.iconResourceId
+        val currentServiceName = currentServiceIcon.serviceName
+        val correctRoleName = getCorrectRoleName(currentServiceId)
 
-        // ** 延遲 1 秒後才重置圖示和訊息 **
+        // 掉落底部時，仍顯示該服務的正確答案
+        val missText = "${currentServiceName}，屬於 ${correctRoleName} 方面的服務"
+        Log.d("GameDebug", "掉落底部，不計分。")
+
+        toastMessage = missText
+
+        // ** 暫停 3 秒，然後重置遊戲 (下一題) **
         viewModelScope.launch {
-            delay(1000)
+            delay(3000)
             resetServiceIcon()
         }
     }
@@ -161,13 +214,11 @@ class ExamViewModel(application: Application) : AndroidViewModel(application) {
         gameJob?.cancel()
         gameJob = viewModelScope.launch {
             val dropAmountDp = pxToDp(dropAmountPx)
-
             val screenBottomYPx = screenHeightPx - serviceIconSizePx
 
             while (true) {
                 delay(100)
 
-                // 只有在非重置狀態下才執行下落和碰撞檢測
                 if (!isResetting) {
                     val newYDp = currentServiceIcon.yOffsetDp + dropAmountDp
                     val newYPx = (newYDp.value * density).toInt()
@@ -190,7 +241,7 @@ class ExamViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     if (collidedCharacter != null) {
-                        handleCollision(collidedCharacter.name)
+                        handleCollision(collidedCharacter)
                     }
                     // 2. 檢查是否碰撞下方邊界
                     else if (newYPx >= screenBottomYPx) {

@@ -14,33 +14,47 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.widget.Toast
 
-// ExamScreen.kt (修正版本)
+// ExamScreen.kt
 @Composable
 fun ExamScreen(
     examViewModel: ExamViewModel = viewModel()
 ) {
     val density = LocalDensity.current
+    val context = LocalContext.current // 獲取 Context 以便顯示 Toast
 
+    // 從 ViewModel 獲取資料
     val screenWidthPx = examViewModel.screenWidthPx
     val screenHeightPx = examViewModel.screenHeightPx
     val author = examViewModel.authorInfo
     val currentScore = examViewModel.score
 
+    // 尺寸轉換
     val iconSizeDp: Dp = with(density) { examViewModel.iconSizePx.toDp() }
     val serviceIconSizeDp: Dp = with(density) { examViewModel.serviceIconSizePx.toDp() }
     val halfScreenHeightDp: Dp = with(density) { (screenHeightPx / 2).toDp() }
+
+    // ** 實作 Toast 彈出訊息 **
+    val toastMessage = examViewModel.toastMessage
+    LaunchedEffect(toastMessage) {
+        if (toastMessage != null) {
+            Toast.makeText(context, toastMessage, Toast.LENGTH_LONG).show() // 使用 LENGTH_LONG 確保訊息可見
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -48,12 +62,10 @@ fun ExamScreen(
             .background(Color(0xFFFFF000)) // 黃色背景
     ) {
         // --- 1. 中央主要內容區 (Column) ---
-        // 移除過大的 horizontal padding，使用 fillMaxWidth 讓內容置中，並使用適當的上下 padding
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // ** 移除 horizontal = 320.dp，只保留合理的 16.dp **
-                .padding(16.dp),
+                .padding(16.dp), // 使用合理的邊距
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -75,13 +87,13 @@ fun ExamScreen(
             Text(text = "螢幕大小 : ${screenWidthPx} * ${screenHeightPx} px", fontSize = 18.sp, color = Color.Black)
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 第四行文字 (分數和訊息)
+            // 第四行文字 (只顯示分數)
             Text(
-                text = "成績 : ${currentScore}分 ${examViewModel.collisionMessage}",
+                text = "成績 : ${currentScore}分", // ** 移除碰撞訊息文字 **
                 fontSize = 18.sp,
                 color = Color.Black
             )
-            // ** 調整 Spacer 高度，確保文字區域整體向上抬升，避開底部的角色圖示 **
+            // 增加底部邊距，確保文字區域整體向上抬升，避開底部的角色圖示
             Spacer(modifier = Modifier.height(iconSizeDp))
         }
 
