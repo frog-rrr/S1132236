@@ -7,12 +7,8 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import tw.edu.pu.csim.tcyang.s1132236.ui.theme.S1132236Theme
 
@@ -26,13 +22,8 @@ class MainActivity : ComponentActivity() {
             HideSystemBars(window)
 
             S1132236Theme {
-                // Scaffold 用來提供 Material 設計結構
-                Scaffold(modifier = Modifier.fillMaxSize()) {
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier // 不傳遞任何 padding
-                    )
-                }
+                // 將應用程式的主要內容設定為 ExamScreen
+                ExamScreen()
             }
         }
     }
@@ -69,21 +60,15 @@ fun HideSystemBars(window: Window) {
     }
 }
 
-// 應用程式的主要內容 Composable 函式
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        // 這裡套用的 modifier 現在只包含基本的設定，沒有 padding
-        modifier = modifier
-    )
-}
+// 注意：Greeting 和 GreetingPreview 函式現在不再被 MainActivity 直接使用，
+// 但為了保持檔案完整性，您可以選擇保留它們或將其移除。
+// 如果您將它們移除，MainActivity.kt 將會更簡潔。
 
-// 預覽 Composable 函式
+// 預覽 Composable 函式 (您可以為 ExamScreen 創建一個新的預覽)
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+fun ExamScreenPreview() {
     S1132236Theme {
-        Greeting("Android")
+        ExamScreen()
     }
 }
